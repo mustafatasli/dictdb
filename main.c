@@ -13,7 +13,6 @@
 
 
 int main(void) {
-	test();
 	puts("Server Starting\n");
 	initServer();
 	return EXIT_SUCCESS;

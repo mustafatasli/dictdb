@@ -110,6 +110,26 @@ int acceptClient(int sfd, int epfd){
 
 }
 
+int readClient(int cfd)
+{
+	ssize_t numRead = 0;
+	char buf[BUF_SIZE];
+
+	while( (numRead = read(cfd, buf, BUF_SIZE)) > 0)
+	{
+		if (write(STDOUT_FILENO, buf, numRead) != numRead){
+			puts("write Error\n");
+			return numRead;
+		}
+	}
+
+	if(numRead == 0)
+		close(cfd);
+
+	return numRead;
+}
+
+
 void initServer()
 {
 	int fd, sfd, cfd, epfd;
@@ -117,21 +137,9 @@ void initServer()
 	int i, num=0;
 	int c = 0;
 
-	char buf[BUF_SIZE];
-	ssize_t numRead;
 	struct epoll_event *evlist;
 
-	lgfd = open("/tmp/db.log", O_WRONLY|O_CREAT|O_TRUNC);
-	if(lgfd == -1){
-		puts("log file error");
-		exit(-1);
-	}
-
-	char *msg = "DictDB Log\n";
-	write(lgfd, msg, strlen(msg));
-
 	sfd = createTCPSocket();
-
 	makeNonBlocking(sfd);
 
 	if(listen(sfd, 10) == -1){
@@ -146,8 +154,9 @@ void initServer()
 	}
 
 	struct epoll_event ev;
-	ev.events = EPOLLIN | EINTR;
+	ev.events = EPOLLIN;
 	ev.data.fd = sfd;
+
 	if(epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, &ev) == -1){
 		puts("epoll_ctl Error\n");
 		exit(-1);
@@ -156,32 +165,28 @@ void initServer()
 	evlist = calloc(10, sizeof(struct epoll_event));
 
 	for(;;){
+		puts("epoll_wait");
 		num = epoll_wait(epfd, evlist, 1, -1);
 		if(num == -1){
-			if(errno == EINTR)
+			if(errno == EINTR){
+				puts("EINTR");
 				continue;
+			}
 		}
-
 
 		for(i=0; i < num; i++){
 
-			if(sfd == evlist[i].data.fd){
+			if(sfd == evlist[i].data.fd) {
 				if(evlist[i].events & EPOLLIN){
 					acceptClient(sfd, epfd);
 				}
 				continue;
-			} else if (evlist[i].events & EPOLLIN){
+			}
+			else if (evlist[i].events & EPOLLIN){
 					cfd = evlist[i].data.fd;
-					while( (numRead = read(cfd, buf, BUF_SIZE)) >= 0)
-					{
-						if (write(STDOUT_FILENO, buf, numRead) != numRead){
-							puts("write Error\n");
-							exit(-1);
-						}
-					}
+					readClient(cfd);
 				}
 
 		}
-
 	}
 }
