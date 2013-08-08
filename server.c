@@ -11,7 +11,9 @@
 #include "common.h"
 #include "server.h"
 
-#define BUF_SIZE 	100
+#define BUF_SIZE 	50
+#define QUERY_BUFFER_SIZE	10
+#define MAX_CLIENT 	100
 
 const char *SOCK_NAME = "/tmp/mysock";
 
@@ -75,7 +77,7 @@ int createTCPSocket(){
 	memset(&addr, 0, sizeof(struct sockaddr_in));
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	addr.sin_port = htons(50001);
+	addr.sin_port = htons(50005);
 
 	if (bind(sfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) == -1){
 		puts("Bind Error\n");
@@ -85,8 +87,22 @@ int createTCPSocket(){
 	return sfd;
 }
 
-int acceptClient(int sfd, int epfd){
+Client *createClient(int fd)
+{
+	Client *c = (Client *)malloc(sizeof(Client));
+	if (c == NULL)
+		return NULL;
+	c->fd = fd;
+	c->buf = (char*)malloc(QUERY_BUFFER_SIZE);
+	c->numRead = 0;
+	c->ready = 0;
+
+	return c;
+}
+
+int acceptClient(Client **clients, int sfd, int epfd){
 	int cfd;
+	struct Client *c=NULL;
 	struct epoll_event ev;
 	for(;;){
 		puts("Accept\n");
@@ -97,6 +113,10 @@ int acceptClient(int sfd, int epfd){
 		}
 
 		makeNonBlocking(cfd);
+		c = createClient(cfd);
+		if(c == NULL)
+			return -1;
+		clients[cfd] = c;
 
 		ev.events = EPOLLIN;
 		ev.data.fd = cfd;
@@ -110,23 +130,40 @@ int acceptClient(int sfd, int epfd){
 
 }
 
-int readClient(int cfd)
+int readClient(Client **clients, int cfd)
 {
+	// "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalue\r\n";
 	ssize_t numRead = 0;
-	char buf[BUF_SIZE];
-
-	while( (numRead = read(cfd, buf, BUF_SIZE)) > 0)
-	{
-		if (write(STDOUT_FILENO, buf, numRead) != numRead){
-			puts("write Error\n");
-			return numRead;
-		}
+	Client *c = clients[cfd];
+	if (c == NULL)
+		return -1;
+	if (c->numRead >= QUERY_BUFFER_SIZE){
+		printf("Buffer Max Client %d, %d\n", c->fd, c->numRead);
+		c->buf = (char*)realloc(c->buf, c->numRead + QUERY_BUFFER_SIZE);
 	}
 
-	if(numRead == 0)
-		close(cfd);
+	numRead = read(cfd, c->buf+c->numRead, QUERY_BUFFER_SIZE);
+	if (numRead != QUERY_BUFFER_SIZE)
+		c->ready = 1;
 
-	return numRead;
+	printf("numRead %d\n", numRead);
+
+	if(numRead == -1){
+		if (errno == EAGAIN) {
+			numRead = 0;
+			c->ready = 1;
+		}
+		else
+			return -1;
+	}
+	else if(numRead == 0){
+		close(cfd);
+	}
+
+	if(numRead)
+		c->numRead += numRead;
+
+	return 0;
 }
 
 
@@ -135,8 +172,10 @@ void initServer()
 	int fd, sfd, cfd, epfd;
 	int lgfd;
 	int i, num=0;
-	int c = 0;
 
+	struct Client *clients[MAX_CLIENT]={ NULL };
+
+	struct Client *c=NULL;
 	struct epoll_event *evlist;
 
 	sfd = createTCPSocket();
@@ -165,6 +204,26 @@ void initServer()
 	evlist = calloc(10, sizeof(struct epoll_event));
 
 	for(;;){
+
+		for(i=0; i < MAX_CLIENT; i++){
+			c = clients[i];
+			if (c == NULL)
+				continue;
+
+			if (c->ready){
+				printf("Client %d ready\n", c->fd);
+				if (write(STDOUT_FILENO, c->buf, c->numRead) != c->numRead){
+					puts("write Error\n");
+					return;
+				}
+				else{
+					c->ready = 0;
+				}
+
+			}
+
+		}
+
 		puts("epoll_wait");
 		num = epoll_wait(epfd, evlist, 1, -1);
 		if(num == -1){
@@ -178,13 +237,14 @@ void initServer()
 
 			if(sfd == evlist[i].data.fd) {
 				if(evlist[i].events & EPOLLIN){
-					acceptClient(sfd, epfd);
+					acceptClient(clients, sfd, epfd);
 				}
 				continue;
 			}
 			else if (evlist[i].events & EPOLLIN){
+					puts("readClient");
 					cfd = evlist[i].data.fd;
-					readClient(cfd);
+					readClient(clients, cfd);
 				}
 
 		}
