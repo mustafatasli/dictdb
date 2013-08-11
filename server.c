@@ -11,7 +11,7 @@
 #include "common.h"
 #include "server.h"
 
-#define READ_BUFFER_SIZE 	100
+#define READ_BUFFER_SIZE 	5
 #define QUERY_BUFFER_SIZE	100
 #define MAX_CLIENT 	100
 
@@ -169,7 +169,8 @@ int parseQuery(Client *c)
 			if(r != 0)
 				return -1;
 
-			c->argv = (CommandArg*)malloc(sizeof(CommandArg)*c->argc);
+			if(c->argv == NULL)
+				c->argv = (CommandArg*)malloc(sizeof(CommandArg)*c->argc);
 
 			next = newline+2;
 			if(*next != '$')
@@ -242,7 +243,7 @@ int readClient(Client **clients, int cfd)
 		c->buf_size = c->numRead + QUERY_BUFFER_SIZE + 1;
 	}
 
-	numRead = read(cfd, c->buf+c->numRead, READ_BUFFER_SIZE);
+	numRead = read(cfd, c->buf+c->len, READ_BUFFER_SIZE);
 	printf("numRead %d\n", numRead);
 
 	if(numRead == -1){

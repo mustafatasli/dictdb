@@ -14,8 +14,6 @@
 
 int main(void) {
 	puts("Server Starting\n");
-	test_stringToInt();
-	test_parseQuery();
 	initServer();
 	return EXIT_SUCCESS;
 }
