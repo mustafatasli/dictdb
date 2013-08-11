@@ -231,6 +231,7 @@ int parseQuery(Client *c)
 
 int readClient(Client **clients, int cfd)
 {
+	int r=0;
 	ssize_t numRead = 0;
 	Client *c = clients[cfd];
 	if (c == NULL)
@@ -260,6 +261,11 @@ int readClient(Client **clients, int cfd)
 	if(numRead){
 		c->len += numRead;
 		c->buf[c->len] = '\0';
+		if(parseQuery(c) == 0){
+			puts("Parsed");
+			c->ready = 1;
+		}
+
 	}
 
 	return 0;
@@ -310,8 +316,8 @@ void initServer()
 				continue;
 
 			if (c->ready){
-				printf("Client %d ready, %d\n", c->fd, c->numRead);
-				if (write(STDOUT_FILENO, c->buf, c->numRead) != c->numRead){
+				printf("Client %d ready, %d\n", c->fd, c->len);
+				if (write(STDOUT_FILENO, c->buf, c->len) != c->len){
 					puts("write Error\n");
 					return;
 				}
