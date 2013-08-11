@@ -19,6 +19,7 @@ typedef struct Client {
 	int argc;
 	char *cmd;
 	CommandArg *argv;
+	int current;
 
 }Client;
 

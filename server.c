@@ -11,8 +11,8 @@
 #include "common.h"
 #include "server.h"
 
-#define READ_BUFFER_SIZE 	10
-#define QUERY_BUFFER_SIZE	10
+#define READ_BUFFER_SIZE 	100
+#define QUERY_BUFFER_SIZE	100
 #define MAX_CLIENT 	100
 
 const char *SOCK_NAME = "/tmp/mysock";
@@ -153,9 +153,11 @@ int parseQuery(Client *c)
 	 */
 	char *next=NULL;
 	char *newline=NULL;
+	char *val=NULL;
 	char ch;
 	int len=0, r=0, i=0;
 	CommandArg *arg=NULL;
+	CommandArg *a;
 
 	if(c->len){
 		newline = strchr(c->buf, '\r');
@@ -174,32 +176,51 @@ int parseQuery(Client *c)
 				return -1;
 
 			newline = strchr(next, '\r');
+			if(newline == NULL)
+				return -1;
+			if(*(newline+1) != '\n')
+				return -1;
+
 			r = stringToInt(next+1, newline-next-1, &len);
 			if(r != 0)
 				return -1;
 
+			val = newline+2;
 			arg = (CommandArg*)malloc(sizeof(CommandArg));
 			arg->len = len;
-			arg->val = newline+2;
+			arg->val = val;
 			c->argv[0] = *arg;
+			c->current = 1;
 
-			for(i=1; i < c->argc; i++){
-				next = newline+2+len+2;
+			for(i=c->current; i < c->argc; i++){
+				a = &c->argv[c->current-1];
+				next = a->val + a->len + 2;
+				//next = val+len+2;
 				if(*next != '$')
 					return -1;
 
 				newline = strchr(next, '\r');
+				if(newline == NULL)
+					return -1;
+				if(*(newline+1) != '\n')
+					return -1;
+
 				r = stringToInt(next+1, newline-next-1, &len);
 				if(r != 0)
 					return -1;
+
+				val = newline+2;
+				newline = strchr(val, '\r');
+				if(newline == NULL)
+					return -1;
+				if(*(newline+1) != '\n')
+					return -1;
 				arg = (CommandArg*)malloc(sizeof(CommandArg));
 				arg->len = len;
-				arg->val = newline+2;
+				arg->val = val;
 				c->argv[i] = *arg;
+				c->current = i+1;
 			}
-
-			c->ready = 1;
-
 		}
 		else
 			return -1;

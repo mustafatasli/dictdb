@@ -17,6 +17,12 @@ void test_parseQuery(){
 	assert(strncmp(c->argv[0].val, "SET", c->argv[0].len) == 0);
 	assert(strncmp(c->argv[1].val, "mykey", c->argv[1].len) == 0);
 	assert(strncmp(c->argv[2].val, "myvalue", c->argv[2].len) == 0);
+
+	c->buf = "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalu";
+	c->len = strlen(c->buf);
+	r = parseQuery(c);
+	assert(r == -1);
+	assert(c->current == 2);
 }
 
 void test_stringToInt()
