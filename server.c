@@ -11,7 +11,7 @@
 #include "common.h"
 #include "server.h"
 
-#define BUF_SIZE 	50
+#define READ_BUFFER_SIZE 	10
 #define QUERY_BUFFER_SIZE	10
 #define MAX_CLIENT 	100
 
@@ -93,11 +93,27 @@ Client *createClient(int fd)
 	if (c == NULL)
 		return NULL;
 	c->fd = fd;
-	c->buf = (char*)malloc(QUERY_BUFFER_SIZE);
+	c->buf = (char*)malloc(QUERY_BUFFER_SIZE + 1);
 	c->numRead = 0;
 	c->ready = 0;
+	c->argc = 0;
+	c->free = 0;
+	c->pos = 0;
+	c->len = 0;
+	c->buf_size = QUERY_BUFFER_SIZE + 1;
 
 	return c;
+}
+
+void resetClient(Client *c)
+{
+	c->ready = 0;
+	c->numRead = 0;
+}
+
+void freeClient()
+{
+
 }
 
 int acceptClient(Client **clients, int sfd, int epfd){
@@ -127,31 +143,91 @@ int acceptClient(Client **clients, int sfd, int epfd){
 	}
 
 	return 0;
+}
 
+
+int parseQuery(Client *c)
+{
+	/*
+	 * "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalue\r\n"
+	 */
+	char *next=NULL;
+	char *newline=NULL;
+	char ch;
+	int len=0, r=0, i=0;
+	CommandArg *arg=NULL;
+
+	if(c->len){
+		newline = strchr(c->buf, '\r');
+		if(newline){
+			next = newline + 1;
+			if(*next != '\n')
+				return -1;
+			r = stringToInt(c->buf+1, newline-c->buf-1, &c->argc);
+			if(r != 0)
+				return -1;
+
+			c->argv = (CommandArg*)malloc(sizeof(CommandArg)*c->argc);
+
+			next = newline+2;
+			if(*next != '$')
+				return -1;
+
+			newline = strchr(next, '\r');
+			r = stringToInt(next+1, newline-next-1, &len);
+			if(r != 0)
+				return -1;
+
+			arg = (CommandArg*)malloc(sizeof(CommandArg));
+			arg->len = len;
+			arg->val = newline+2;
+			c->argv[0] = *arg;
+
+			for(i=1; i < c->argc; i++){
+				next = newline+2+len+2;
+				if(*next != '$')
+					return -1;
+
+				newline = strchr(next, '\r');
+				r = stringToInt(next+1, newline-next-1, &len);
+				if(r != 0)
+					return -1;
+				arg = (CommandArg*)malloc(sizeof(CommandArg));
+				arg->len = len;
+				arg->val = newline+2;
+				c->argv[i] = *arg;
+			}
+
+			c->ready = 1;
+
+		}
+		else
+			return -1;
+	}
+
+	return 0;
 }
 
 int readClient(Client **clients, int cfd)
 {
-	// "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalue\r\n";
 	ssize_t numRead = 0;
 	Client *c = clients[cfd];
 	if (c == NULL)
 		return -1;
-	if (c->numRead >= QUERY_BUFFER_SIZE){
+	if ((c->numRead + READ_BUFFER_SIZE) >= c->buf_size){
 		printf("Buffer Max Client %d, %d\n", c->fd, c->numRead);
-		c->buf = (char*)realloc(c->buf, c->numRead + QUERY_BUFFER_SIZE);
+		c->buf = (char*)realloc(c->buf, c->numRead + QUERY_BUFFER_SIZE + 1);
+		c->buf_size = c->numRead + QUERY_BUFFER_SIZE + 1;
 	}
 
-	numRead = read(cfd, c->buf+c->numRead, QUERY_BUFFER_SIZE);
-	if (numRead != QUERY_BUFFER_SIZE)
-		c->ready = 1;
-
+	numRead = read(cfd, c->buf+c->numRead, READ_BUFFER_SIZE);
 	printf("numRead %d\n", numRead);
 
 	if(numRead == -1){
+		puts("numRead -1");
 		if (errno == EAGAIN) {
+			puts("EAGAIN");
 			numRead = 0;
-			c->ready = 1;
 		}
 		else
 			return -1;
@@ -160,8 +236,10 @@ int readClient(Client **clients, int cfd)
 		close(cfd);
 	}
 
-	if(numRead)
-		c->numRead += numRead;
+	if(numRead){
+		c->len += numRead;
+		c->buf[c->len] = '\0';
+	}
 
 	return 0;
 }
@@ -173,7 +251,7 @@ void initServer()
 	int lgfd;
 	int i, num=0;
 
-	struct Client *clients[MAX_CLIENT]={ NULL };
+	struct Client *clients[MAX_CLIENT] = { NULL };
 
 	struct Client *c=NULL;
 	struct epoll_event *evlist;
@@ -211,15 +289,12 @@ void initServer()
 				continue;
 
 			if (c->ready){
-				printf("Client %d ready\n", c->fd);
+				printf("Client %d ready, %d\n", c->fd, c->numRead);
 				if (write(STDOUT_FILENO, c->buf, c->numRead) != c->numRead){
 					puts("write Error\n");
 					return;
 				}
-				else{
-					c->ready = 0;
-				}
-
+				resetClient(c);
 			}
 
 		}

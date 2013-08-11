@@ -6,4 +6,6 @@
 #include <ctype.h>
 #include <string.h>
 
+#include "utils.h"
+
 #endif

@@ -1,6 +1,42 @@
 #include "dict.h"
+#include "server.h"
 #include "test.h"
 #include "common.h"
+#include <assert.h>
+
+
+void test_parseQuery(){
+	int r=0;
+	Client *c = createClient(-1);
+	c->buf = "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalue\r\n";
+	c->len = strlen(c->buf);
+	r = parseQuery(c);
+	assert(r == 0);
+	assert(c->argc == 3);
+	printf("Result %d, argc %d\r", r, c->argc);
+	assert(strncmp(c->argv[0].val, "SET", c->argv[0].len) == 0);
+	assert(strncmp(c->argv[1].val, "mykey", c->argv[1].len) == 0);
+	assert(strncmp(c->argv[2].val, "myvalue", c->argv[2].len) == 0);
+}
+
+void test_stringToInt()
+{
+	char *nums[] = { "*3", "*34", "*012", "*000"};
+    int vals[] = {3, 34, 12, 0,};
+	int n=-1, r=-1, i=0;
+
+	for(i=0; i < 4; i++){
+		r = stringToInt(nums[i]+1, strlen(nums[i])-1, &n);
+		assert(r == 0);
+		assert(n == vals[i]);
+		printf("Result %d, num %d\r", r, n);
+	}
+
+	char *wrong = "*1c98";
+	r = stringToInt(wrong+1, strlen(wrong)-1, &n);
+	assert(r == -1);
+
+}
 
 void print_keys(HashTable *ht)
 {
