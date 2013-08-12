@@ -1,3 +1,5 @@
+#ifndef SERVER_H_
+#define SERVER_H_
 
 typedef struct CommandArg {
 	int len;
@@ -24,9 +26,9 @@ typedef struct Client {
 }Client;
 
 
-
-
 Client *createClient(int fd);
 
 void initServer();
+
+#endif /* SERVER_H_ */
 

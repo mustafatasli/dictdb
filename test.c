@@ -1,5 +1,6 @@
 #include "dict.h"
 #include "server.h"
+#include "db.h"
 #include "test.h"
 #include "common.h"
 #include <assert.h>
