@@ -11,7 +11,6 @@ int parseQuery(Client *c)
 	char ch;
 	int len=0, r=0, i=0;
 	CommandArg *arg=NULL;
-	CommandArg *a;
 
 	if(c->len <= 0)
 		return -1;
@@ -45,16 +44,15 @@ int parseQuery(Client *c)
 			return -1;
 
 		val = newline+2;
-		arg = (CommandArg*)malloc(sizeof(CommandArg));
+		arg = &c->argv[0];
 		arg->len = len;
 		arg->val = val;
-		c->argv[0] = *arg;
 		c->current = 1;
 	}
 
 	for(i=c->current; i < c->argc; i++){
-		a = &c->argv[c->current-1];
-		next = a->val + a->len + 2;
+		arg = &c->argv[c->current-1];
+		next = arg->val + arg->len + 2;
 		//next = val+len+2;
 		if(*next != '$')
 			return -1;
@@ -75,10 +73,9 @@ int parseQuery(Client *c)
 			return -1;
 		if(*(newline+1) != '\n')
 			return -1;
-		arg = (CommandArg*)malloc(sizeof(CommandArg));
+		arg = &c->argv[i];
 		arg->len = len;
 		arg->val = val;
-		c->argv[i] = *arg;
 		c->current = i+1;
 	}
 
